@@ -80,7 +80,8 @@ def relu_forward(x):
   #############################################################################
   # TODO: Implement the ReLU forward pass.                                    #
   #############################################################################
-  out = np.maximum(0, x)
+  out = np.copy(x)
+  out[x <= 0] = 0
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
@@ -423,7 +424,7 @@ def max_pool_backward_naive(dout, cache):
   """
   A naive implementation of the backward pass for a max pooling layer.
 
-  Inputs:
+  Inputs
   - dout: Upstream derivatives
   - cache: A tuple of (x, pool_param) as in the forward pass.
 
