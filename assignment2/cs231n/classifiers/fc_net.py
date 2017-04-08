@@ -175,17 +175,28 @@ class FullyConnectedNet(object):
         str_idx = str(idx + 1)
         b_param = 'b' + str_idx
         W_param = 'W' + str_idx
+        gamma_param = 'gamma' + str_idx
+        beta_param = 'beta' + str_idx
         prev_dim = input_dim if idx == 0 else hidden_dims[idx - 1]
 
         self.params[b_param] = np.zeros((1, dim))
         self.params[W_param] = np.random.normal(0, weight_scale, (prev_dim, dim))
+        if self.use_batchnorm:
+            self.params[gamma_param] = np.random.normal(0, weight_scale, (1, dim))
+            self.params[beta_param] = np.zeros((1, dim))
+
 
     # set up last set of parameters
     last_b = 'b' + str(self.num_layers)
     last_W = 'W' + str(self.num_layers)
+    last_beta = 'beta' + str(self.num_layers)
+    last_gamma = 'gamma' + str(self.num_layers)
 
     self.params[last_b] = np.zeros((1, num_classes))
     self.params[last_W] = np.random.normal(0, weight_scale, (hidden_dims[-1], num_classes))
+    if self.use_batchnorm:
+        self.params[last_gamma] = np.random.normal(0, weight_scale, (1, num_classes))
+        self.params[last_beta] = np.zeros((1, num_classes))
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
@@ -206,7 +217,7 @@ class FullyConnectedNet(object):
     # pass of the second batch normalization layer, etc.
     self.bn_params = []
     if self.use_batchnorm:
-      self.bn_params = [{'mode': 'train'} for i in xrange(self.num_layers - 1)]
+      self.bn_params = [{'mode': 'train'} for i in xrange(self.num_layers)]
 
     # Cast all parameters to the correct datatype
     for k, v in self.params.iteritems():
@@ -249,12 +260,29 @@ class FullyConnectedNet(object):
     inp = X
     weights = self.params['W1']
     bias = self.params['b1']
+    if self.use_batchnorm:
+        gamma = self.params['gamma1']
+        beta = self.params['beta1']
+        bn_params = self.bn_params[0]
 
     while (count < self.num_layers):
         last_iter = count == self.num_layers - 1
-        inp, caches['cache' + str(count + 1)] = affine_relu_forward(inp, weights, bias)
+
+        if self.use_batchnorm:
+          inp, caches['cache' + str(count + 1)] = affine_batch_relu_forward(inp, weights, bias, gamma, beta, bn_params)
+        else:
+          inp, caches['cache' + str(count + 1)] = affine_relu_forward(inp, weights, bias)
+
+        if self.use_dropout and not last_iter:
+          inp, caches['drop_cache' + str(count + 1)] = dropout_forward(inp, self.dropout_param)
+
         weights = None if last_iter else self.params['W' + str(count + 2)]
         bias = None if last_iter else self.params['b' + str(count + 2)]
+
+        if self.use_batchnorm:
+            gamma = None if last_iter else self.params['gamma' + str(count + 2)]
+            beta = None if last_iter else self.params['beta' + str(count + 2)]
+            bn_params = None if last_iter else self.bn_params[count + 1]
         count += 1
 
     scores = inp
@@ -282,20 +310,43 @@ class FullyConnectedNet(object):
     ############################################################################
     loss, dscores = softmax_loss(scores, y)
     dout = dscores
-
-    # dhidden1, grads['W2'], grads['b2'] = affine_relu_backward(  dscores, cache2)
-    # grads['W2'] += self.reg * self.params['W2']
+    init = count
 
     while (count > 0):
         W_var = 'W' + str(count)
         b_var = 'b' + str(count)
+        gamma_var = 'gamma' + str(count)
+        beta_var = 'beta' + str(count)
+
 
         loss += .5 * self.reg * np.sum(np.square(self.params[W_var]))
-        dout, grads[W_var], grads[b_var] = affine_relu_backward(dout, caches['cache' + str(count)])
+
+        if self.use_dropout and not init == count:
+            dout = dropout_backward(dout, caches['drop_cache' + str(count)])
+
+        if self.use_batchnorm:
+            dout, grads[W_var], grads[b_var], grads[gamma_var], grads[beta_var] = affine_batch_relu_backward(dout, caches['cache' + str(count)])
+        else:
+            dout, grads[W_var], grads[b_var] = affine_relu_backward(dout, caches['cache' + str(count)])
+
         grads[W_var] += self.reg * self.params[W_var]
-        count += -1
+        count -= 1
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
 
     return loss, grads
+
+def affine_batch_relu_forward(x, w, b, gamma, beta, bn_params):
+    a, fc_cache = affine_forward(x, w, b)
+    b, batch_cache = batchnorm_forward(a, gamma, beta, bn_params)
+    out, relu_cache = relu_forward(b)
+    cache = (fc_cache, batch_cache, relu_cache)
+    return (out, cache)
+
+def affine_batch_relu_backward(dout, cache):
+    fc_cache, batch_cache, relu_cache = cache
+    db = relu_backward(dout, relu_cache)
+    da, dgamma, dbeta = batchnorm_backward_alt(db, batch_cache)
+    dx, dw, db = affine_backward(da, fc_cache)
+    return dx, dw, db, dgamma, dbeta
