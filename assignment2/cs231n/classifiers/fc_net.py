@@ -275,6 +275,8 @@ class FullyConnectedNet(object):
 
         if self.use_dropout and not last_iter:
           inp, caches['drop_cache' + str(count + 1)] = dropout_forward(inp, self.dropout_param)
+          if mode == 'test':
+              inp *= self.dropout_param['p']
 
         weights = None if last_iter else self.params['W' + str(count + 2)]
         bias = None if last_iter else self.params['b' + str(count + 2)]
