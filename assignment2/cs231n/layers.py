@@ -440,10 +440,41 @@ def conv_forward_naive(x, w, b, conv_param):
   # TODO: Implement the convolutional forward pass.                           #
   # Hint: you can use the function np.pad for padding.                        #
   #############################################################################
-  pass
+  pad = conv_param['pad']
+  stride = conv_param['stride']
+  N, C, H, W = x.shape
+  F, _, HH, WW = w.shape
+
+  H_prime = 1 + (H + 2 * pad - HH) / stride
+  W_prime = 1 + (W + 2 * pad - WW) / stride
+
+  out = np.zeros((N, F, H_prime, W_prime))
+
+  # pad the data
+  npad = ((0, 0), (0, 0), (pad, pad), (pad, pad))
+  x_padded = np.pad(x, pad_width=npad, mode='constant', constant_values=0)
+
+  for i in xrange(N):
+      # loop over filters
+      for j in xrange(F):
+          # slide from  top to bottom
+          for k in xrange(H_prime):
+              y_start = k * stride
+              y_end = y_start + HH
+              # slide from left to right
+              for l in xrange(W_prime):
+                  x_start = l * stride
+                  x_end = x_start + WW
+
+                  window = x_padded[i, :, y_start:y_end, x_start:x_end]
+                  val = np.sum(window * w[j])
+
+                  # set the value
+                  out[i, j, k, l] = val + b[j]
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
+
   cache = (x, w, b, conv_param)
   return out, cache
 
@@ -465,7 +496,38 @@ def conv_backward_naive(dout, cache):
   #############################################################################
   # TODO: Implement the convolutional backward pass.                          #
   #############################################################################
-  pass
+  x, w, b, conv_param = cache
+  pad = conv_param['pad']
+  stride = conv_param['stride']
+  N, C, H, W = x.shape
+  F, _, HH, WW = w.shape
+  H_prime = 1 + (H + 2 * pad - HH) / stride
+  W_prime = 1 + (W + 2 * pad - WW) / stride
+
+  dx = np.zeros_like(x)
+  dw = np.zeros_like(w)
+  db = np.zeros_like(b)
+
+  npad = ((0, 0), (0, 0), (pad, pad), (pad, pad))
+  x_padded = np.pad(x, pad_width=npad, mode='constant', constant_values=0)
+  dx_padded = np.pad(dx, pad_width=npad, mode='constant', constant_values=0)
+
+  for i in xrange(N):
+      for j in xrange(F):
+          for k in xrange(H_prime):
+              h_start = k * stride
+              h_end = h_start + HH
+              for l in xrange(W_prime):
+                  w_start = l * stride
+                  w_end = w_start + WW
+
+                  window = x_padded[i, :, h_start:h_end, w_start:w_end]
+
+                  db[j] += dout[i, j, k, l]
+                  dw[j] += window * dout[i, j, k, l]
+                  dx_padded[i, :, h_start:h_end, w_start:w_end] += w[j] * dout[i, j, k, l]
+
+  dx = dx_padded[:, :, pad:pad+H, pad:pad+W]
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
@@ -491,7 +553,33 @@ def max_pool_forward_naive(x, pool_param):
   #############################################################################
   # TODO: Implement the max pooling forward pass                              #
   #############################################################################
-  pass
+  pool_height = pool_param['pool_height']
+  pool_width = pool_param['pool_width']
+  stride = pool_param['stride']
+
+  N, C, H, W = x.shape
+
+  H_prime = 1 + (H - pool_height) / stride
+  W_prime = 1 + (W - pool_width) / stride
+
+  out = np.zeros((N, C, H_prime, W_prime))
+
+  for i in xrange(N):
+      # loop over filters
+      for j in xrange(C):
+          # slide from  top to bottom
+          for k in xrange(H_prime):
+              y_start = k * stride
+              y_end = y_start + pool_height
+              # slide from left to right
+              for l in xrange(W_prime):
+                  x_start = l * stride
+                  x_end = x_start + pool_width
+
+                  x_section = x[i, j, y_start:y_end, x_start:x_end]
+
+                  # set the value
+                  out[i, j, k, l] = np.amax(x_section)
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
@@ -514,7 +602,36 @@ def max_pool_backward_naive(dout, cache):
   #############################################################################
   # TODO: Implement the max pooling backward pass                             #
   #############################################################################
-  pass
+  x, pool_param = cache
+
+  pool_height = pool_param['pool_height']
+  pool_width = pool_param['pool_width']
+  stride = pool_param['stride']
+
+  N, C, H, W = x.shape
+
+  H_prime = 1 + (H - pool_height) / stride
+  W_prime = 1 + (W - pool_width) / stride
+
+  dx = np.zeros_like(x)
+
+  for i in xrange(N):
+      # loop over filters
+      for j in xrange(C):
+          # slide from  top to bottom
+          for k in xrange(H_prime):
+              y_start = k * stride
+              y_end = y_start + pool_height
+              # slide from left to right
+              for l in xrange(W_prime):
+                  x_start = l * stride
+                  x_end = x_start + pool_width
+
+                  x_section = x[i, j, y_start:y_end, x_start:x_end]
+                  m = np.amax(x_section)
+
+                  # set the value
+                  dx[i, j, y_start:y_end, x_start:x_end] += (x_section == m) * dout[i, j, k, l]
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
