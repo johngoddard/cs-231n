@@ -661,6 +661,15 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
   - cache: Values needed for the backward pass
   """
   out, cache = None, None
+  cache = {}
+
+  out = np.zeros_like(x)
+
+  mode = bn_param['mode']
+  eps = bn_param.get('eps', 1e-5)
+  momentum = bn_param.get('momentum', 0.9)
+
+  N, C, H, W = x.shape
 
   #############################################################################
   # TODO: Implement the forward pass for spatial batch normalization.         #
@@ -669,7 +678,12 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
   # version of batch normalization defined above. Your implementation should  #
   # be very short; ours is less than five lines.                              #
   #############################################################################
-  pass
+  for i in xrange(C):
+      channel_data = x[:, i, :, :]
+      reshaped = np.reshape(channel_data, (N, H * W))
+      output, cache[i] = batchnorm_forward(reshaped, gamma[i], beta[i], bn_param)
+
+      out[:, i, :, :] = np.reshape(output, (N, H, W))
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
@@ -692,6 +706,12 @@ def spatial_batchnorm_backward(dout, cache):
   """
   dx, dgamma, dbeta = None, None, None
 
+
+  N, C, H, W = dout.shape
+  dx = np.zeros_like(dout)
+  dgamma = np.zeros((C, ))
+  dbeta = np.zeros((C, ))
+
   #############################################################################
   # TODO: Implement the backward pass for spatial batch normalization.        #
   #                                                                           #
@@ -699,7 +719,15 @@ def spatial_batchnorm_backward(dout, cache):
   # version of batch normalization defined above. Your implementation should  #
   # be very short; ours is less than five lines.                              #
   #############################################################################
-  pass
+  for i in xrange(C):
+      channel_dout = dout[:, i, :, :]
+      channel_cache = cache[i]
+      reshaped = np.reshape(channel_dout, (N, H * W))
+      temp_dx, temp_dgamma, temp_dbeta = batchnorm_backward(reshaped, channel_cache)
+      dgamma[i] = sum(temp_dgamma)
+      dbeta[i] = sum(temp_dbeta)
+
+      dx[:, i, :, :] = np.reshape(temp_dx, (N, H, W))
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
