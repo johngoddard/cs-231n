@@ -70,6 +70,14 @@ class ThreeLayerConvNet(object):
     # final fc params
     self.params['W3'] = np.random.normal(0, weight_scale, (hidden_dim, num_classes))
     self.params['b3'] = np.zeros((1, num_classes))
+
+    self.params['gamma'] = np.random.normal(0, weight_scale, (num_filters, ))
+    self.params['beta'] = np.zeros((num_filters, ))
+
+    self.params['gamma_norm'] = np.random.normal(0, weight_scale, (hidden_dim, ))
+    self.params['beta_norm'] = np.zeros((hidden_dim, ))
+
+    self.bn_params = [{'mode': 'train'}, {'mode': 'train'}]
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
@@ -104,8 +112,12 @@ class ThreeLayerConvNet(object):
     # conv - relu - 2x2 max pool - affine - relu - affine - softmax
     conv_out, conv_cache = conv_relu_pool_forward(X, W1, b1, conv_param, pool_param)
 
-    hidden_out, hidden_cache = affine_relu_forward(conv_out, W2, b2)
-    fc_out, fc_cache = affine_forward(hidden_out, W3, b3)
+    batch_conv_out, batch_conv_cache = spatial_batchnorm_forward(conv_out, self.params['gamma'], self.params['beta'], self.bn_params[0])
+
+    hidden_out, hidden_cache = affine_relu_forward(batch_conv_out, W2, b2)
+    batch_hidden_out, batch_hidden_cache = batchnorm_forward(hidden_out, self.params['gamma_norm'], self.params['beta_norm'], self.bn_params[1])
+
+    fc_out, fc_cache = affine_forward(batch_hidden_out, W3, b3)
 
     scores = fc_out
     ############################################################################
@@ -125,11 +137,15 @@ class ThreeLayerConvNet(object):
     loss, dout = softmax_loss(scores, y)
     loss += .5 * self.reg * (np.sum(np.square(self.params['W1'])) + np.sum(np.square(self.params['W2'])) + np.sum(np.square(self.params['W3'])))
 
-    dhidden, grads['W3'], grads['b3'] = affine_backward(dout, fc_cache)
+    dbatch_hidden, grads['W3'], grads['b3'] = affine_backward(dout, fc_cache)
     grads['W3'] += self.reg * self.params['W3']
 
-    dconv, grads['W2'], grads['b2'] = affine_relu_backward(dhidden, hidden_cache)
+    dhidden, grads['gamma_norm'], grads['beta_norm'] = batchnorm_backward(dbatch_hidden, batch_hidden_cache)
+
+    dbatch_conv, grads['W2'], grads['b2'] = affine_relu_backward(dhidden, hidden_cache)
     grads['W2'] += self.reg * self.params['W2']
+
+    dconv, grads['gamma'], grads['beta'] = spatial_batchnorm_backward(dbatch_conv, batch_conv_cache)
 
     dx, grads['W1'], grads['b1'] = conv_relu_pool_backward(dconv, conv_cache)
     ############################################################################
